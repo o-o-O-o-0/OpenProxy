@@ -1020,6 +1020,8 @@ export default {
           this.lastModelLoadError = ''
           this.lastModelLoadDetails = ''
           this.modelViewPhase = 'ready'
+          this.modelsLoading = false
+          this.modelsLoadingText = ''
           this.flashModelRefresh()
           this.savedModelSource = 'custom'
           this.setCustomCheckFeedback(
@@ -1062,6 +1064,10 @@ export default {
           alert(`模型来源更新失败：${err?.message || err}`)
         }
       } finally {
+        if (this.modelViewPhase !== 'loading') {
+          this.modelsLoading = false
+          this.modelsLoadingText = ''
+        }
         this.modelSourceSaving = false
       }
     },

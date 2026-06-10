@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { loadConfig } from './config.js';
-import { applyCliOverrides, parseArgs } from './runtime-config.js';
+import { applyCliOverrides, applyEnvOverrides, parseArgs } from './runtime-config.js';
 import { createProxyServer } from './server.js';
 
 const REQUEST_BODY_LIMIT = '64mb';
@@ -58,7 +58,7 @@ process.on('unhandledRejection', (reason) => {
 });
 
 const cliArgs = parseArgs();
-const config = applyCliOverrides(loadConfig(), cliArgs);
+const config = applyEnvOverrides(applyCliOverrides(loadConfig(), cliArgs));
 
 function replaceRuntimeConfig(nextConfig) {
   for (const key of Object.keys(config)) {
@@ -69,7 +69,7 @@ function replaceRuntimeConfig(nextConfig) {
 }
 
 function reloadRuntimeConfig(nextConfig = null) {
-  return replaceRuntimeConfig(nextConfig || applyCliOverrides(loadConfig(), cliArgs));
+  return replaceRuntimeConfig(nextConfig || applyEnvOverrides(applyCliOverrides(loadConfig(), cliArgs)));
 }
 
 appendNodeLog('INFO', `OpenProxy bootstrap pid=${process.pid}`);

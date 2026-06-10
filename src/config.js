@@ -60,9 +60,11 @@ export function generateApiKey() {
 /**
  * 加载配置
  */
-export function loadConfig() {
-  const configPath = join(__dirname, '..', 'config', 'default.json');
-  
+export function loadConfig(configPath = process.env.OPENPROXY_CONFIG_PATH || join(__dirname, '..', 'config', 'default.json')) {
+  if (!String(configPath || '').trim()) {
+    configPath = join(__dirname, '..', 'config', 'default.json');
+  }
+
   if (existsSync(configPath)) {
     try {
       const config = JSON.parse(readFileSync(configPath, 'utf-8'));

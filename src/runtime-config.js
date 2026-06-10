@@ -129,3 +129,23 @@ export function applyCliOverrides(config, cliArgs) {
 
   return config
 }
+
+function hasOwn(env, name) {
+  return Object.prototype.hasOwnProperty.call(env, name)
+}
+
+export function applyEnvOverrides(config, env = process.env) {
+  ensureBackendConfig(config)
+
+  if (hasOwn(env, 'OPENPROXY_API_KEY') && String(env.OPENPROXY_API_KEY).trim()) {
+    config.proxy.apiKey = String(env.OPENPROXY_API_KEY)
+  }
+  if (hasOwn(env, 'OPENPROXY_CUSTOM_API_KEY')) {
+    config.backend.custom.apiKey = String(env.OPENPROXY_CUSTOM_API_KEY)
+  }
+  if (hasOwn(env, 'OPENPROXY_OPENCODE_UPSTREAM_API_KEY')) {
+    config.backend.opencode.upstreamApiKey = String(env.OPENPROXY_OPENCODE_UPSTREAM_API_KEY)
+  }
+
+  return config
+}

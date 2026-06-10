@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
+import { loadConfig } from '../src/config.js';
 import { fetchModelsResponse } from '../src/proxy/models-service.js';
 import { createAuthMiddleware } from '../src/proxy/middleware.js';
 import {
@@ -19,7 +23,7 @@ import {
   getActiveAnthropicMessageUrlCandidates,
   parseGatewayModelId,
 } from '../src/proxy/backend.js';
-import { applyCliOverrides, parseArgs } from '../src/runtime-config.js';
+import { applyCliOverrides, applyEnvOverrides, parseArgs } from '../src/runtime-config.js';
 import {
   redactAnthropicMessagesRequest,
   redactOpenAIChatRequest,
@@ -390,22 +394,61 @@ test('parseGatewayModelId requires explicit source prefix', () => {
   assert.throws(() => parseGatewayModelId('demo'), /missing source prefix/);
 });
 
-test('runtime CLI overrides apply backend and upstream settings', () => {
+test('runtime CLI overrides apply non-secret backend and privacy settings', () => {
   const cliArgs = parseArgs([
     '--custom-base-url', 'https://custom.example.com/v1',
-    '--custom-api-key', 'sk-demo',
     '--opencode-base-url', 'https://fallback.example.com/v1/chat/completions',
-    '--opencode-upstream-api-key', 'public-alt',
     '--privacy-enabled', 'false',
   ]);
 
   const config = applyCliOverrides(createConfig(), cliArgs);
 
   assert.equal(config.backend.custom.baseUrl, 'https://custom.example.com/v1');
-  assert.equal(config.backend.custom.apiKey, 'sk-demo');
   assert.equal(config.backend.opencode.baseUrl, 'https://fallback.example.com/v1/chat/completions');
-  assert.equal(config.backend.opencode.upstreamApiKey, 'public-alt');
   assert.equal(config.privacy.enabled, false);
+});
+
+test('runtime env overrides apply secret settings', () => {
+  const config = applyEnvOverrides(createConfig(), {
+    OPENPROXY_API_KEY: 'op-secret',
+    OPENPROXY_CUSTOM_API_KEY: 'sk-custom',
+    OPENPROXY_OPENCODE_UPSTREAM_API_KEY: 'sk-opencode',
+  });
+
+  assert.equal(config.proxy.apiKey, 'op-secret');
+  assert.equal(config.backend.custom.apiKey, 'sk-custom');
+  assert.equal(config.backend.opencode.upstreamApiKey, 'sk-opencode');
+});
+
+test('loadConfig reads explicit runtime config path', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'openproxy-config-test-'));
+  const configPath = join(dir, 'config.json');
+
+  try {
+    writeFileSync(configPath, JSON.stringify({
+      proxy: {
+        lanAccess: true,
+        apiKey: 'op-from-file',
+      },
+      backend: {
+        custom: {
+          baseUrl: 'https://custom.example.com/v1',
+          apiKey: 'sk-file',
+        },
+      },
+    }));
+
+    const config = loadConfig(configPath);
+
+    assert.equal(config.proxy.port, 3210);
+    assert.equal(config.proxy.host, '0.0.0.0');
+    assert.equal(config.proxy.apiKey, 'op-from-file');
+    assert.equal(config.backend.custom.baseUrl, 'https://custom.example.com/v1');
+    assert.equal(config.backend.custom.apiKey, 'sk-file');
+    assert.equal(config.backend.opencode.upstreamApiKey, undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 function createMockResponse() {

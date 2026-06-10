@@ -95,6 +95,17 @@
 <script>
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import {
+  detectCustomServiceModels as detectCustomServiceModelsApi,
+  fetchProxyModels,
+  getApiKey,
+  getConfig,
+  getProxyStatus,
+  reloadProxyConfig,
+  saveConfigPatch,
+  startProxy,
+  stopProxy,
+} from './api/proxy.js'
 import brandLogo from './assets/openproxy-logo.png'
 import PanelHeader from './components/PanelHeader.vue'
 import EndpointBanner from './components/EndpointBanner.vue'
@@ -429,7 +440,7 @@ export default {
     },
     async loadConfig() {
       try {
-        const config = await invoke('get_config')
+        const config = await getConfig()
         const proxyConfig = config?.proxy || {}
         const backendConfig = config?.backend || {}
         const privacyConfig = config?.privacy || {}
@@ -467,7 +478,7 @@ export default {
     },
     async resolveApiKeyFallback() {
       try {
-        const apiKey = await invoke('get_api_key')
+        const apiKey = await getApiKey()
         if (apiKey) return String(apiKey)
       } catch (err) {
         console.warn('[UI] Failed to resolve live API key:', err)
@@ -477,7 +488,7 @@ export default {
     },
     async loadStatus() {
       try {
-        const status = await invoke('get_proxy_status')
+        const status = await getProxyStatus()
         this.status = status.running ? 'running' : 'stopped'
         return this.status
       } catch (err) {
@@ -513,10 +524,10 @@ export default {
       this.serviceTransition = isStopping ? 'stopping' : 'starting'
       try {
         if (isStopping) {
-          await invoke('stop_proxy')
+          await stopProxy()
           this.status = 'stopped'
         } else {
-          await invoke('start_proxy')
+          await startProxy()
           await this.loadStatus()
           await this.loadModels()
         }
@@ -584,7 +595,7 @@ export default {
       }
 
       try {
-        const models = await invoke('detect_custom_service_models', { baseUrl, apiKey })
+        const models = await detectCustomServiceModelsApi(baseUrl, apiKey)
         const normalized = this.normalizeToolModels(models, 'custom')
         if (normalized.length === 0) {
           throw this.createModelLoadError('自定义服务未返回任何可用模型。', 'MODEL_FETCH_EMPTY')
@@ -785,35 +796,19 @@ export default {
 
         for (let i = 0; i < retries; i++) {
           try {
-            const resp = await fetch(`http://127.0.0.1:${this.port}/v1/models`, {
-              headers: {
-                Authorization: `Bearer ${this.apiKey}`,
-              },
-            })
-            if (resp.status === 401) {
-              const liveApiKey = await this.resolveApiKeyFallback()
-              if (liveApiKey && liveApiKey !== this.apiKey) {
-                this.apiKey = liveApiKey
-                continue
+            let data
+            try {
+              data = await fetchProxyModels(this.port, this.apiKey)
+            } catch (err) {
+              if (err?.status === 401) {
+                const liveApiKey = await this.resolveApiKeyFallback()
+                if (liveApiKey && liveApiKey !== this.apiKey) {
+                  this.apiKey = liveApiKey
+                  continue
+                }
               }
+              throw err
             }
-            if (!resp.ok) {
-              let detail = ''
-              let code = ''
-              try {
-                const payload = await resp.json()
-                detail = payload?.error?.message || ''
-                code = payload?.error?.code || ''
-              } catch {
-                detail = ''
-                code = ''
-              }
-              throw this.createModelLoadError(
-                detail ? `HTTP ${resp.status}: ${detail}` : `HTTP ${resp.status}`,
-                code,
-              )
-            }
-            const data = await resp.json()
             const nextModels = this.normalizeToolModels(data.data || [])
             const nextOpencodeModels = nextModels.filter(model => model.source !== 'custom')
             const nextCustomModels = nextModels.filter(model => model.source === 'custom')
@@ -905,11 +900,9 @@ export default {
       this.editingCustomConfig = nextSource === 'custom' && !this.hasSavedCustomConfig
 
       try {
-        await invoke('save_config', {
-          patch: {
-            ui: {
-              modelSource: nextSource,
-            },
+        await saveConfigPatch({
+          ui: {
+            modelSource: nextSource,
           },
         })
       } catch (err) {
@@ -925,9 +918,9 @@ export default {
       this.loading = true
       this.serviceTransition = 'restarting'
       try {
-        await invoke('stop_proxy')
+        await stopProxy()
         await new Promise(resolve => setTimeout(resolve, 400))
-        await invoke('start_proxy')
+        await startProxy()
         await this.loadStatus()
       } finally {
         this.serviceTransition = null
@@ -936,16 +929,7 @@ export default {
     },
     async reloadProxyConfigIfRunning() {
       if (this.status !== 'running') return
-      const response = await fetch(`http://127.0.0.1:${this.port}/reload-config`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.apiKey}`,
-        },
-      })
-      if (!response.ok) {
-        throw new Error(`热更新代理配置失败: HTTP ${response.status}`)
-      }
+      await reloadProxyConfig(this.port, this.apiKey)
     },
     async clearCustomServiceConfig() {
       if (this.modelSourceSaving || this.modelSourceClearing) return
@@ -961,7 +945,7 @@ export default {
       }
 
       try {
-        await invoke('save_config', { patch })
+        await saveConfigPatch(patch)
         this.modelSource = 'custom'
         this.draftCustomBaseUrl = ''
         this.draftCustomApiKey = ''
@@ -1026,7 +1010,7 @@ export default {
           this.clearCustomCheckFeedback()
         }
 
-        await invoke('save_config', { patch })
+        await saveConfigPatch(patch)
         await this.loadConfig()
         await this.reloadProxyConfigIfRunning()
 
@@ -1097,11 +1081,9 @@ export default {
     async applyNetworkConfigPatch(proxyPatch, successMessage) {
       this.networkBusy = true
       try {
-        await invoke('save_config', {
-          patch: {
-            proxy: {
-              ...proxyPatch,
-            },
+        await saveConfigPatch({
+          proxy: {
+            ...proxyPatch,
           },
         })
 
@@ -1127,14 +1109,12 @@ export default {
       this.privacyEnabled = nextValue
       this.networkBusy = true
       try {
-        await invoke('save_config', {
-          patch: {
-            privacy: {
-              enabled: nextValue,
-              redactAssistantMessages: true,
-              redactToolResults: true,
-              logHits: true,
-            },
+        await saveConfigPatch({
+          privacy: {
+            enabled: nextValue,
+            redactAssistantMessages: true,
+            redactToolResults: true,
+            logHits: true,
           },
         })
 

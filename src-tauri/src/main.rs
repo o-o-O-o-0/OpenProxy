@@ -1,7 +1,12 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod backend_urls;
+mod config_utils;
+
 use arboard::Clipboard;
+use backend_urls::derive_openai_model_candidates;
+use config_utils::{migrate_api_key_value, API_KEY_PREFIX};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
@@ -29,8 +34,6 @@ use uuid::Uuid;
 const SETTINGS_WINDOW_LABEL: &str = "main";
 const TRAY_MENU_QUIT: &str = "quit";
 const TRAY_ICON_ID: &str = "openproxy-tray";
-const LEGACY_API_KEY_PREFIX: &str = "openproxy-";
-const API_KEY_PREFIX: &str = "op-";
 const FIXED_PROXY_PORT: u16 = 3210;
 const PANEL_WIDTH: f64 = 372.0;
 const PANEL_MIN_HEIGHT: f64 = 620.0;
@@ -209,36 +212,6 @@ struct UpstreamCapabilities {
     anthropic_reason: String,
     openai_supported: bool,
     openai_reason: String,
-}
-
-fn strip_anthropic_endpoint_suffix(url: &str) -> String {
-    // 先 strip OpenAI 后缀，再 strip Anthropic 后缀，和 Node.js backend.js 保持一致
-    let url = url.trim().trim_end_matches('/');
-    url.replace("/chat/completions", "")
-        .replace("/models", "")
-        .replace("/v1/messages", "")
-        .replace("/messages", "")
-        .replace("/v1", "")
-}
-
-fn derive_anthropic_candidates(base_url: &str) -> Vec<String> {
-    let cleaned = strip_anthropic_endpoint_suffix(base_url);
-    vec![format!("{}/v1/messages", cleaned)]
-}
-
-fn derive_openai_model_candidates(base_url: &str) -> Vec<String> {
-    let trimmed = base_url.trim().trim_end_matches('/');
-    if trimmed.ends_with("/v1") {
-        vec![
-            format!("{}/models", trimmed),
-            format!("{}/models", trimmed.trim_end_matches("/v1")),
-        ]
-    } else {
-        vec![
-            format!("{}/v1/models", trimmed),
-            format!("{}/models", trimmed),
-        ]
-    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -489,25 +462,10 @@ fn sync_tray_icon(app: &AppHandle, running: bool) {
     }
 }
 
-fn redact_cmd_args(args: &[String]) -> Vec<String> {
-    let sensitive_flags = ["--api-key", "--opencode-upstream-api-key", "--custom-api-key"];
-    let mut redacted = Vec::with_capacity(args.len());
-    let mut redact_next = false;
-
-    for arg in args {
-        if redact_next {
-            redacted.push("[REDACTED]".to_string());
-            redact_next = false;
-            continue;
-        }
-
-        redacted.push(arg.clone());
-        if sensitive_flags.contains(&arg.as_str()) {
-            redact_next = true;
-        }
-    }
-
-    redacted
+fn redact_cmd_args(_args: &[String]) -> Vec<String> {
+    // Sensitive values are passed via environment variables, not CLI args.
+    // CLI args contain only non-sensitive configuration (port, host, URLs, booleans).
+    _args.to_vec()
 }
 
 fn start_proxy_with_handle(app: &AppHandle) -> Result<ProxyStatus, String> {
@@ -596,16 +554,10 @@ fn start_proxy_with_handle(app: &AppHandle) -> Result<ProxyStatus, String> {
     cmd_args.push(port.to_string());
     cmd_args.push("--host".to_string());
     cmd_args.push(host);
-    cmd_args.push("--api-key".to_string());
-    cmd_args.push(api_key);
     cmd_args.push("--opencode-base-url".to_string());
     cmd_args.push(opencode_base_url);
-    cmd_args.push("--opencode-upstream-api-key".to_string());
-    cmd_args.push(opencode_upstream_api_key);
     cmd_args.push("--custom-base-url".to_string());
     cmd_args.push(custom_base_url);
-    cmd_args.push("--custom-api-key".to_string());
-    cmd_args.push(custom_api_key);
     if lan_access {
         cmd_args.push("--lan-access".to_string());
     }
@@ -676,6 +628,10 @@ fn start_proxy_with_handle(app: &AppHandle) -> Result<ProxyStatus, String> {
 
     cmd.env("NODE_PATH", &node_modules_path)
         .env("OPENPROXY_NODE_LOG_PATH", &node_log_path)
+        .env("OPENPROXY_CONFIG_PATH", &state.config_path)
+        .env("OPENPROXY_API_KEY", &api_key)
+        .env("OPENPROXY_OPENCODE_UPSTREAM_API_KEY", &opencode_upstream_api_key)
+        .env("OPENPROXY_CUSTOM_API_KEY", &custom_api_key)
         .args(&cmd_args)
         .current_dir(&app_dir)
         .stdout(Stdio::from(stdout_log))
@@ -1138,12 +1094,6 @@ fn save_config_to_file(config_path: &PathBuf, config: &AppConfig) -> Result<(), 
     .map_err(|e| format!("Failed to write config: {}", e))?;
 
     Ok(())
-}
-
-fn migrate_api_key_value(api_key: &str) -> Option<String> {
-    api_key
-        .strip_prefix(LEGACY_API_KEY_PREFIX)
-        .map(|suffix| format!("{}{}", API_KEY_PREFIX, suffix))
 }
 
 fn migrate_config_api_key(config: &mut AppConfig) -> Option<String> {
@@ -2429,30 +2379,4 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{derive_anthropic_candidates, migrate_api_key_value};
-
-    #[test]
-    fn migrates_legacy_api_key_prefix() {
-        assert_eq!(
-            migrate_api_key_value("openproxy-abc123"),
-            Some("op-abc123".to_string())
-        );
-    }
-
-    #[test]
-    fn leaves_new_api_key_prefix_unchanged() {
-        assert_eq!(migrate_api_key_value("op-abc123"), None);
-    }
-
-    #[test]
-    fn derives_anthropic_endpoint_from_openai_chat_url() {
-        assert_eq!(
-            derive_anthropic_candidates("https://opencode.ai/zen/v1/chat/completions"),
-            vec!["https://opencode.ai/zen/v1/messages".to_string()]
-        );
-    }
 }

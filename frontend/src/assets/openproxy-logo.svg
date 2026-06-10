@@ -1,0 +1,50 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="10" y="10" width="108" height="108" rx="30" fill="url(#bg)"/>
+  <rect x="10.75" y="10.75" width="106.5" height="106.5" rx="29.25" stroke="url(#frame)" stroke-opacity="0.62" stroke-width="1.5"/>
+  <path d="M90 26L99.5 18.5L97.3 31.2L106.5 28.2L101.4 39.5L90 26Z" fill="url(#crest)"/>
+  <path d="M40 78C40 61.4315 53.4315 48 70 48C77.9542 48 85.1856 51.0939 90.5553 56.1442C82.1551 62.3346 76.8 72.3026 76.8 83.4V90H52.8C45.6467 90 40 84.3533 40 78Z" fill="url(#body)"/>
+  <path d="M74.8 87.6C74.8 73.6915 81.8463 60.2061 92.5756 52.0423C96.8534 48.7872 101.459 46.4741 106.4 45L104.7 37.8C104.223 35.782 105.884 33.941 107.94 34.2072L116.627 35.3316C118.298 35.5479 119.372 37.1931 118.879 38.8038L116.174 47.6406C118.622 48.8692 120 51.0839 120 53.9C120 58.9634 115.964 62.9 111 62.9H105.3C105.3 76.1965 94.2203 87 80.6 87H74.8V87.6Z" fill="url(#head)"/>
+  <path d="M101.5 55.2L119 59.5L101.1 65.9" fill="url(#beak)"/>
+  <circle cx="95.5" cy="54.9" r="4.2" fill="#22120B"/>
+  <circle cx="96.6" cy="53.8" r="1.15" fill="#FFF9F1"/>
+  <path d="M79.2 90.4C79.2 90.4 79.6 100.5 73.4 105" stroke="#DB9B45" stroke-width="4.5" stroke-linecap="round"/>
+  <path d="M62.8 90.4C62.8 90.4 63.3 100.2 57.7 105" stroke="#DB9B45" stroke-width="4.5" stroke-linecap="round"/>
+  <path d="M28 62C32.2 58.5 36.4 58.8 39 61.8" stroke="#FFF1D9" stroke-opacity="0.18" stroke-width="4" stroke-linecap="round"/>
+  <path d="M20 24H35C38.3137 24 41 26.6863 41 30V98C41 103.523 36.5228 108 31 108H24C18.4772 108 14 103.523 14 98V30C14 26.6863 16.6863 24 20 24Z" fill="url(#trunk)"/>
+  <path d="M24 39H32" stroke="#F7EAD1" stroke-opacity="0.28" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M23 53H33" stroke="#F7EAD1" stroke-opacity="0.24" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M24 67H31" stroke="#F7EAD1" stroke-opacity="0.22" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M23 81H32" stroke="#F7EAD1" stroke-opacity="0.2" stroke-width="3.2" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="bg" x1="18" y1="12" x2="111" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#352318"/>
+      <stop offset="1" stop-color="#21150F"/>
+    </linearGradient>
+    <linearGradient id="frame" x1="20" y1="12" x2="104" y2="114" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F3C988"/>
+      <stop offset="1" stop-color="#7B5A33"/>
+    </linearGradient>
+    <linearGradient id="trunk" x1="18" y1="24" x2="42" y2="104" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8A5A2A"/>
+      <stop offset="1" stop-color="#563417"/>
+    </linearGradient>
+    <linearGradient id="body" x1="43" y1="50" x2="92" y2="91" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F5D28A"/>
+      <stop offset="0.54" stop-color="#E3A958"/>
+      <stop offset="1" stop-color="#B76E2F"/>
+    </linearGradient>
+    <linearGradient id="head" x1="78" y1="38" x2="119" y2="84" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF0D2"/>
+      <stop offset="0.48" stop-color="#F0BD69"/>
+      <stop offset="1" stop-color="#D48833"/>
+    </linearGradient>
+    <linearGradient id="crest" x1="92" y1="19" x2="105" y2="40" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFDFA3"/>
+      <stop offset="1" stop-color="#E8A24D"/>
+    </linearGradient>
+    <linearGradient id="beak" x1="96" y1="60" x2="113" y2="66" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE0A2"/>
+      <stop offset="1" stop-color="#D98F2E"/>
+    </linearGradient>
+  </defs>
+</svg>

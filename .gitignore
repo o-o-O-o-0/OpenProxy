@@ -1,0 +1,74 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Package manager caches / local state
+.npm/
+npm-cache/
+.pnpm-store/
+.yarn/
+.yarn-cache/
+
+# Build output
+src-tauri/target/
+src-tauri/gen/
+dist/
+frontend/dist/
+
+# Rust / Tauri local files
+src-tauri/.cargo/
+*.pdb
+*.rlib
+
+# Local tooling
+.codegraph/
+.dbg/
+
+# Config (contains API keys)
+config/default.json
+config/*.local.json
+config/*.secret.json
+*.local
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Test / coverage
+coverage/
+playwright-report/
+test-results/
+.nyc_output/
+
+# Tool caches
+.cache/
+.vite/
+frontend/.vite/
+.eslintcache
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Temp files
+nul
+*.tmp
+*.temp
+*.orig
+*.pid
+*.pid.lock

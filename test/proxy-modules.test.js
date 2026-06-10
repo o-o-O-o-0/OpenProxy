@@ -63,7 +63,7 @@ test('redactText does not treat version-like strings as IPv4 addresses', () => {
   assert.equal(ip.text, '服务器 IP 是 [PRIVATE_IP]，请检查。');
 });
 
-test('redactAnthropicMessagesRequest preserves system and redacts message content', () => {
+test('redactAnthropicMessagesRequest redacts string system and message content', () => {
   const body = {
     system: '系统提示包含 token=' + 'sk-' + 'abcdefghijklmnopqrst' + 'T3BlbkFJ' + 'abcdefghijklmnopqrst' + '',
     messages: [
@@ -71,34 +71,47 @@ test('redactAnthropicMessagesRequest preserves system and redacts message conten
     ],
   };
   const result = redactAnthropicMessagesRequest(body, { privacy: { enabled: true } });
-  assert.equal(result.count, 1);
-  assert.equal(body.system, '系统提示包含 token=' + 'sk-' + 'abcdefghijklmnopqrst' + 'T3BlbkFJ' + 'abcdefghijklmnopqrst' + '');
+  assert.equal(result.count, 2);
+  assert.equal(body.system, '系统提示包含 [PRIVATE_SECRET]');
   assert.equal(body.messages[0].content[0].text, '身份证 [PRIVATE_ID_CARD]');
 });
 
-test('redactAnthropicMessagesRequest leaves system blocks untouched, bridge conversion redacts system via OpenAI path', () => {
+test('redactAnthropicMessagesRequest redacts system text blocks before native forwarding', () => {
   const body = {
     system: [
       { type: 'text', text: '系统提示，联系 admin@example.com' },
-      { type: 'text', text: '保留第二段' },
+      { type: 'text', text: '服务器 IP 是 192.168.1.10' },
+      { type: 'cache_control', ephemeral: true },
     ],
     messages: [
       { role: 'user', content: [{ type: 'text', text: '你好' }] },
     ],
   };
 
-  // Direct Anthropic redaction does NOT touch system
-  redactAnthropicMessagesRequest(body, { privacy: { enabled: true } });
+  const result = redactAnthropicMessagesRequest(body, { privacy: { enabled: true } });
+
+  assert.equal(result.count, 2);
   assert.equal(Array.isArray(body.system), true);
+  assert.equal(body.system[0].text, '系统提示，联系 [PRIVATE_EMAIL]');
+  assert.equal(body.system[1].text, '服务器 IP 是 [PRIVATE_IP]');
+  assert.deepEqual(body.system[2], { type: 'cache_control', ephemeral: true });
+});
+
+test('redactAnthropicMessagesRequest preserves system when privacy disabled', () => {
+  const body = {
+    system: [
+      { type: 'text', text: '系统提示，联系 admin@example.com' },
+    ],
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: '身份证 11010519900307743X' }] },
+    ],
+  };
+
+  const result = redactAnthropicMessagesRequest(body, { privacy: { enabled: false } });
+
+  assert.equal(result.count, 0);
   assert.equal(body.system[0].text, '系统提示，联系 admin@example.com');
-
-  // After conversion to OpenAI format, redactOpenAIChatRequest filters system
-  const converted = convertAnthropicToOpenAI(body);
-  redactOpenAIChatRequest(converted, { privacy: { enabled: true } });
-
-  assert.equal(converted.messages[0].role, 'system');
-  assert.match(converted.messages[0].content, /\[PRIVATE_EMAIL\]/);
-  assert.equal(converted.messages[0].content, '系统提示，联系 [PRIVATE_EMAIL]\n保留第二段');
+  assert.equal(body.messages[0].content[0].text, '身份证 11010519900307743X');
 });
 
 test('redactAnthropicMessagesRequest redacts tool_result content by default', () => {
@@ -859,6 +872,9 @@ test('createAnthropicMessagesHandler passes custom upstream Anthropic requests t
   const handler = createAnthropicMessagesHandler(config);
   const body = {
     model: 'custom/demo',
+    system: [
+      { type: 'text', text: '系统联系 admin@example.com' },
+    ],
     max_tokens: 128,
     tools: [{ name: 'lookup', input_schema: { type: 'object' } }],
     tool_choice: { type: 'tool', name: 'lookup' },
@@ -870,6 +886,7 @@ test('createAnthropicMessagesHandler passes custom upstream Anthropic requests t
     await handler({ body, method: 'POST', originalUrl: '/v1/messages', headers: {} }, res);
     assert.equal(requestedUrl, 'https://custom.example.com/v1/messages');
     assert.equal(sentBody.model, 'demo');
+    assert.equal(sentBody.system[0].text, '系统联系 [PRIVATE_EMAIL]');
     assert.deepEqual(sentBody.messages, body.messages);
     assert.equal(res.body.content[0].type, 'tool_use');
   } finally {

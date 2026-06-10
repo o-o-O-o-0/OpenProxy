@@ -380,6 +380,9 @@ function redactAnthropicSystem(system, aggregate) {
 export function redactAnthropicMessagesRequest(body, config) {
   if (!body || !isPrivacyEnabled(config)) return makeAggregateResult(body)
   const aggregate = makeAggregateResult(body)
+  if (body.system) {
+    body.system = redactAnthropicSystem(body.system, aggregate)
+  }
   if (Array.isArray(body.messages)) {
     for (let i = 0; i < body.messages.length; i++) {
       redactAnthropicMessage(body.messages[i], aggregate, config)

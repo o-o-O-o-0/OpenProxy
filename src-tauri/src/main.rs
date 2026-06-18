@@ -639,9 +639,12 @@ fn start_proxy_with_handle(app: &AppHandle) -> Result<ProxyStatus, String> {
 
     debug_log(&format!("node stdout/stderr redirected to {}", node_log_path.display()));
 
-    if let Ok(value) = std::env::var("DEBUG_STREAM") {
-        cmd.env("DEBUG_STREAM", value);
-    }
+    // DEBUG_STREAM defaults to "1" so per-chunk streaming logs land in
+    // openproxy-node.log without the user having to set it manually.
+    // The user can still override (e.g. set DEBUG_STREAM=0 in the parent
+    // environment) before launching the tray app.
+    let debug_stream_value = std::env::var("DEBUG_STREAM").unwrap_or_else(|_| "1".to_string());
+    cmd.env("DEBUG_STREAM", debug_stream_value);
 
     match cmd.spawn() {
         Ok(child) => {

@@ -459,6 +459,9 @@ function createMockResponse() {
     endedWith: null,
     writes: [],
     headersSent: false,
+    destroyed: false,
+    writableEnded: false,
+    _listeners: { close: [], error: [], drain: [] },
     setHeader(name, value) {
       this.headers[name] = value;
     },
@@ -474,9 +477,11 @@ function createMockResponse() {
     write(chunk) {
       this.headersSent = true;
       this.writes.push(chunk);
+      return true;
     },
     end() {
       this.headersSent = true;
+      this.writableEnded = true;
       this.endedWith = 'end';
       return this;
     },
@@ -485,7 +490,25 @@ function createMockResponse() {
       this.endedWith = code;
       this.statusCode = code;
       return this;
-    }
+    },
+    on(event, listener) {
+      if (this._listeners[event]) this._listeners[event].push(listener);
+      return this;
+    },
+    once(event, listener) {
+      if (this._listeners[event]) this._listeners[event].push(listener);
+      return this;
+    },
+    off(event, listener) {
+      if (!this._listeners[event]) return this;
+      const idx = this._listeners[event].indexOf(listener);
+      if (idx >= 0) this._listeners[event].splice(idx, 1);
+      return this;
+    },
+    emit(event, ...args) {
+      const listeners = this._listeners[event] ? this._listeners[event].slice() : [];
+      for (const fn of listeners) fn(...args);
+    },
   };
 }
 
@@ -767,7 +790,7 @@ test('forwardOpenAIStreamToUpstream returns proxy error when SSE pipe fails befo
   }
 });
 
-test('forwardOpenAIStreamToUpstream does not write JSON error after headers were sent', async () => {
+test('forwardOpenAIStreamToUpstream gracefully closes the stream when upstream fails after headers sent', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => ({
     ok: true,
@@ -778,11 +801,15 @@ test('forwardOpenAIStreamToUpstream does not write JSON error after headers were
 
   try {
     await forwardOpenAIStreamToUpstream({ model: 'opencode/demo', messages: [] }, createConfig(), res);
+    // Bytes were already streamed, so we cannot inject a JSON error.
     assert.equal(res.headersSent, true);
     assert.equal(res.body, null);
     assert.equal(res.statusCode, 200);
     assert.equal(res.writes.length, 1);
-    assert.equal(res.endedWith, null);
+    // ...but the proxy MUST close the response to release the client —
+    // leaving the socket hanging causes "stream hangs forever" complaints.
+    assert.equal(res.endedWith, 'end');
+    assert.equal(res.writableEnded, true);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -18,6 +18,12 @@ function shouldLogDiagnostics(force = false) {
   return force || isStreamDebugEnabled();
 }
 
+function tagPrefix(label, ctx = {}) {
+  const requestId = ctx.requestId ? ` rid=${ctx.requestId}` : '';
+  const sessionId = ctx.sessionId ? ` sid=${ctx.sessionId}` : '';
+  return `[${label}]${requestId}${sessionId}`;
+}
+
 function truncate(value, max = 160) {
   if (typeof value !== 'string') {
     return value;
@@ -112,19 +118,17 @@ export function logStreamingDecision(label, { bodyStream, acceptHeader, shouldSt
   );
 }
 
-export function logUpstreamStreamingResponse(label, response, force = false) {
-  if (!shouldLogDiagnostics(force)) {
-    return;
-  }
-
+// Always logged: upstream response landed. Tells us whether body actually started streaming.
+export function logUpstreamStreamingResponse(label, response, _force = false, ctx = {}) {
   const contentType = typeof response?.headers?.get === 'function'
     ? (response.headers.get('content-type') || '[none]')
     : '[unknown]';
   const transferEncoding = typeof response?.headers?.get === 'function'
     ? (response.headers.get('transfer-encoding') || '[none]')
     : '[unknown]';
+  const status = response?.status ?? '[unknown]';
   console.log(
-    `[${label}] upstream response content-type=${contentType} transfer-encoding=${transferEncoding}`
+    `${tagPrefix(label, ctx)} upstream response status=${status} content-type=${contentType} transfer-encoding=${transferEncoding}`
   );
 }
 
@@ -161,6 +165,7 @@ export function logUpstreamRequestShape(label, body, force = false) {
     keys: body && typeof body === 'object' ? Object.keys(body) : [],
     model: body?.model,
     stream: body?.stream,
+    max_tokens: body?.max_tokens,
     toolChoice: body?.tool_choice || null,
     toolsCount: Array.isArray(body?.tools) ? body.tools.length : 0,
     toolNames: Array.isArray(body?.tools) ? body.tools.map((tool) => tool?.function?.name || tool?.name || '') : [],
@@ -169,20 +174,39 @@ export function logUpstreamRequestShape(label, body, force = false) {
   })}`);
 }
 
-export function logStreamChunk(label, chunkIndex, byteLength) {
-  if (!isStreamDebugEnabled()) {
-    return;
-  }
-
-  if (chunkIndex === 1) {
-    console.log(`[${label}] first stream chunk bytes=${byteLength}`);
-  }
+// Always logged: first chunk = TTFB (time-to-first-byte) for the stream.
+export function logStreamFirstByte(label, byteLength, elapsedMs, ctx = {}) {
+  console.log(
+    `${tagPrefix(label, ctx)} first stream chunk bytes=${byteLength} ttfb_ms=${elapsedMs}`
+  );
 }
 
-export function logStreamCompleted(label, chunkCount, totalBytes) {
+// Per-chunk byte logging — kept gated to avoid log spam.
+export function logStreamChunk(label, chunkIndex, byteLength, ctx = {}) {
   if (!isStreamDebugEnabled()) {
     return;
   }
 
-  console.log(`[${label}] stream completed chunks=${chunkCount} bytes=${totalBytes}`);
+  console.log(
+    `${tagPrefix(label, ctx)} stream chunk #${chunkIndex} bytes=${byteLength}`
+  );
+}
+
+// Always logged: clean stream completion.
+export function logStreamCompleted(label, chunkCount, totalBytes, durationMs, ctx = {}) {
+  console.log(
+    `${tagPrefix(label, ctx)} stream completed chunks=${chunkCount} bytes=${totalBytes} duration_ms=${durationMs}`
+  );
+}
+
+// Always logged: stream ended abnormally — shows reason so we can tell apart
+// client disconnect / upstream error / timeout / parse failure.
+export function logStreamAborted(label, reason, detail = {}, ctx = {}) {
+  const extra = Object.entries(detail)
+    .filter(([, v]) => v !== undefined && v !== null)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(' ');
+  console.log(
+    `${tagPrefix(label, ctx)} stream aborted reason=${reason}${extra ? ` ${extra}` : ''}`
+  );
 }

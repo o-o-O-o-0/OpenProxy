@@ -118,6 +118,42 @@ test('normalizeOpenAIRequest keeps valid tool_choice', () => {
   assert.equal(result.tool_choice.function.name, 'lookup');
 });
 
+// --- Regression tests for the streaming-truncation bug where the OpenCode
+// path silently injected max_tokens=1024 when the client did not specify
+// one. See investigation in 2026-06-18 logs. ---
+
+test('normalizeOpenAIRequest does NOT default max_tokens=1024 on opencode path anymore', () => {
+  const result = normalizeOpenAIRequest(
+    { model: 'test-model', messages: [{ role: 'user', content: 'hi' }] },
+    { backendType: 'opencode' }
+  );
+  assert.equal('max_tokens' in result, false, 'should leave max_tokens unset so upstream picks its own default');
+});
+
+test('normalizeOpenAIRequest uses modelMaxOutput when client did not provide max_tokens', () => {
+  const result = normalizeOpenAIRequest(
+    { model: 'test-model', messages: [{ role: 'user', content: 'hi' }] },
+    { backendType: 'opencode', modelMaxOutput: 32000 }
+  );
+  assert.equal(result.max_tokens, 32000);
+});
+
+test('normalizeOpenAIRequest prefers explicit client max_tokens over modelMaxOutput', () => {
+  const result = normalizeOpenAIRequest(
+    { model: 'test-model', max_tokens: 8000, messages: [{ role: 'user', content: 'hi' }] },
+    { backendType: 'opencode', modelMaxOutput: 32000 }
+  );
+  assert.equal(result.max_tokens, 8000);
+});
+
+test('normalizeOpenAIRequest leaves max_tokens unset on custom path when client omits it', () => {
+  const result = normalizeOpenAIRequest(
+    { model: 'test-model', messages: [{ role: 'user', content: 'hi' }] },
+    { backendType: 'custom' }
+  );
+  assert.equal('max_tokens' in result, false);
+});
+
 function createSSEStream(chunks) {
   return new ReadableStream({
     start(controller) {

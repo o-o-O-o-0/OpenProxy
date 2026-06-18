@@ -80,6 +80,8 @@ function setModelCache(config, models) {
     name: model.name,
     source: model.source,
     upstream_id: model.upstream_id,
+    max_output_tokens: model.max_output_tokens,
+    context_window: model.context_window,
   }))
 }
 

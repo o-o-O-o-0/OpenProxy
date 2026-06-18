@@ -486,7 +486,9 @@ export function convertOpenAISSEToAnthropicSSE(openaiStream, options = {}) {
               // finish_reason → content_block_stop + message_delta + message_stop
               if (choice?.finish_reason) {
                 emitEndSequence(controller, choice.finish_reason === 'stop' ? 'end_turn' : 'tool_use');
-                continue;
+                sseLogger?.onComplete();
+                controller.close();
+                return;
               }
 
               const delta = choice?.delta;

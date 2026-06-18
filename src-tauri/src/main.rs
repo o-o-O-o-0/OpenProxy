@@ -647,11 +647,43 @@ fn start_proxy_with_handle(app: &AppHandle) -> Result<ProxyStatus, String> {
     cmd.env("DEBUG_STREAM", debug_stream_value);
 
     match cmd.spawn() {
-        Ok(child) => {
+        Ok(mut child) => {
+            let child_pid = child.id();
             eprintln!(
                 "[LOG] Proxy started successfully (child pid: {})",
-                child.id()
+                child_pid
             );
+            debug_log(&format!("start_proxy spawned node pid={}", child_pid));
+
+            // Spawn-success only means the OS forked the process; it does NOT
+            // mean the HTTP listener bound successfully. If 0.0.0.0:<port> was
+            // already taken (e.g. legacy node instance from a prior install),
+            // node will print FATAL and exit immediately. Without this check
+            // we'd happily mark proxy-status-changed:running, the tray would
+            // turn green, and the user would be silently routed to the legacy
+            // process — which is exactly the symptom investigated 2026-06-18.
+            //
+            // Poll the listener for up to 4s while watching for early exit.
+            let listen_ok = wait_for_node_listen(&mut child, port, Duration::from_secs(4));
+            if !listen_ok {
+                let exit_status = child.try_wait().ok().flatten();
+                let _ = child.kill();
+                let _ = child.wait();
+                let detail = match exit_status {
+                    Some(status) => format!("node exited early: {}", status),
+                    None => "node did not start listening within 4s".to_string(),
+                };
+                let err = format!(
+                    "Failed to start proxy: {}. Check {} for details.",
+                    detail,
+                    node_log_path.display()
+                );
+                debug_log(&format!("start_proxy listen verification failed pid={} reason={}", child_pid, detail));
+                eprintln!("[LOG] ERROR: {}", err);
+                return Err(err);
+            }
+
+            debug_log(&format!("start_proxy listen verified pid={}", child_pid));
             *proxy = Some(child);
             drop(proxy);
             let status = ProxyStatus {
@@ -671,8 +703,46 @@ fn start_proxy_with_handle(app: &AppHandle) -> Result<ProxyStatus, String> {
     }
 }
 
+/// Wait until the node child process is actually listening on `port`, or it
+/// exits early, or `timeout` elapses. Returns true only when a TCP probe to
+/// the port succeeds AND the child is still running.
+fn wait_for_node_listen(child: &mut std::process::Child, port: u16, timeout: Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    let probe_addrs = [
+        std::net::SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, port)),
+        std::net::SocketAddr::from((std::net::Ipv4Addr::UNSPECIFIED, port)),
+    ];
+    while std::time::Instant::now() < deadline {
+        // Bail out if the child already died.
+        match child.try_wait() {
+            Ok(Some(_status)) => return false,
+            Ok(None) => {}
+            Err(_) => {}
+        }
+
+        for addr in probe_addrs.iter() {
+            if TcpStream::connect_timeout(addr, Duration::from_millis(150)).is_ok() {
+                return true;
+            }
+        }
+
+        std::thread::sleep(Duration::from_millis(120));
+    }
+    false
+}
+
 fn is_local_port_in_use(port: u16) -> bool {
-    TcpListener::bind(("127.0.0.1", port)).is_err()
+    // Probe both the wildcard and loopback addresses. Windows treats
+    // 0.0.0.0:<port> and 127.0.0.1:<port> as separate bind targets, so a
+    // legacy OpenProxy listening on 0.0.0.0 would NOT prevent a fresh bind on
+    // 127.0.0.1 from succeeding. If we only checked 127.0.0.1 here we would
+    // wrongly conclude the port is free, skip the shutdown_existing_openproxy
+    // path, then spawn node which immediately fails with EADDRINUSE while the
+    // tray UI still claims "running". See investigation 2026-06-18.
+    if TcpListener::bind(((std::net::Ipv4Addr::UNSPECIFIED), port)).is_err() {
+        return true;
+    }
+    TcpListener::bind(((std::net::Ipv4Addr::LOCALHOST), port)).is_err()
 }
 
 fn is_existing_openproxy_instance(port: u16) -> bool {
